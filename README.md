@@ -91,7 +91,7 @@ Collisions come from `report.check_collisions` with the same head model.
 
 In every run the model extrusion per filament is identical to the source.
 
-Reading: separated colour regions gain the most (pillars −95 % purge). Where colours touch, pure
+Reading: separated colour regions gain the most (pillars −92 % purge). Where colours touch, pure
 geometry mode allows no height step, because the tip land sits over the neighbour. Touching colours
 therefore only batch with a tolerance floor (fixed mode or `tip_tolerance`). ITC reports 0.35–0.4 mm
 working on its printers; this is unverified on the A1.
