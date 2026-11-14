@@ -13,17 +13,25 @@ import bisect
 import math
 from dataclasses import dataclass
 
-# Bambu Lab A1 / A1 mini (same hotend). Radii/heights are ESTIMATES pending measurement:
-#  - tip land ~1 mm across; cone to the nozzle hex; Orca profile nozzle_height = 4.76 mm (tip to
-#    heater-block bottom), silicone sock taken as ~1 mm lower; part-fan duct assumed no lower than
-#    the sock within 30 mm; extruder_clearance_height_to_rod = 25 mm beyond that.
+# Bambu Lab A1 / A1 mini 0.4 mm hotend (same hotend on both). Derived from the community-measured
+# hotend CAD "Bambulab A1 Hotend" (Printables 879230, A1_Hotend.step): for each band start r the
+# value is the lowest point of the hotend at horizontal distance >= r from the nozzle axis
+# (axisymmetric, i.e. worst direction). Tip land radius 0.52 mm; cone up to the silicone sock,
+# whose flat bottom sits 1.9 mm above the tip out to r = 10.5 mm; sock chamfer to r = 12 mm.
+# Beyond 12 mm the CAD has only the hotend, not the toolhead shell / part-cooling duct: 4.9 mm out
+# to 30 mm is an ASSUMPTION (duct not lower than the sock edge) until measured on the printer.
+# Past that, Orca's extruder_clearance_height_to_rod = 25 mm.
 A1_PROFILE: list[tuple[float, float]] = [
-    (0.5, 0.0),
-    (1.0, 0.2),
-    (2.0, 0.6),
-    (3.5, 1.6),
-    (14.0, 3.5),
-    (30.0, 3.5),
+    (0.6, 0.0),
+    (0.75, 0.21),
+    (1.0, 0.5),
+    (1.25, 0.98),
+    (1.5, 1.5),
+    (10.5, 1.9),
+    (11.0, 2.1),
+    (11.5, 3.1),
+    (12.0, 4.1),
+    (30.0, 4.9),
 ]
 A1_FAR = 25.0
 

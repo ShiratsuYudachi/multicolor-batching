@@ -27,14 +27,16 @@ Plugin config (Plugins › Config, JSON):
 |---|---|---|
 | `mode` | `"geometry"` | `"off"`, `"fixed"` (ITC-style single height), `"geometry"` (print-head profile) |
 | `fixed_height` | `0.4` | fixed mode: allowed height difference to printed parts, mm |
-| `head_profile` | A1 estimate | geometry mode: `[[radius, height], …]`; within `radius` of the nozzle axis, obstacles may stand `height` above the tip |
+| `head_profile` | A1 hotend CAD | geometry mode: `[[radius, height], …]`; within `radius` of the nozzle axis, obstacles may stand `height` above the tip |
 | `head_far` | `25` | allowed height beyond the profile (X-rod clearance) |
 | `tip_tolerance` | `0` | geometry mode: height floor added to every band (empirical squish tolerance, e.g. 0.4) |
 | `island_gap` | `3.5` | geometry mode: islands of one colour farther apart than this are scheduled separately |
 
-The default A1 head profile in `colorbatch/head.py` is an **estimate** (tip land, cone,
-`nozzle_height` 4.76 mm from the Orca profile, X-rod at 25 mm). Measure the real hotend before
-trusting it on a print.
+The default A1 head profile in `colorbatch/head.py` comes from the community-measured hotend CAD
+[Bambulab A1 Hotend (Printables 879230)](https://www.printables.com/model/879230-bambulab-a1-hotend):
+tip land r 0.52 mm, cone, silicone-sock bottom 1.9 mm above the tip out to r 10.5 mm. The CAD has
+no toolhead shell or part-cooling duct, so 4.9 mm for r 12–30 mm is an assumption. Past 30 mm the
+profile uses the X-rod clearance of 25 mm from the Orca profile. Check the duct on the printer.
 
 ## CLI
 
@@ -74,11 +76,11 @@ Collisions come from `report.check_collisions` with the same head model.
 |---|---|---|---|---|---|
 | pillars (4 × Ø8 mm, 16 mm pitch) | Orca layer order | 300 | 91.7 | 168 | – |
 | | fixed 0.4 mm | 102 | 31.2 | 59 | 0 |
-| | geometry | 15 | 4.6 | 12 | 0 |
+| | geometry | 25 | 7.6 | 18 | 0 |
 | figurine (body + arms 3 mm away + touching badge) | Orca | 160 | 48.9 | 99 | – |
 | | fixed 0.4 mm | 55 | 16.8 | 38 | 0 |
 | | geometry | 90 | 27.5 | 57 | 0 |
-| | geometry + 0.4 floor | 33 | 10.1 | 26 | 0 |
+| | geometry + 0.4 floor | 35 | 10.7 | 27 | 0 |
 | split cube (two touching halves) | Orca | 100 | 30.6 | 62 | – |
 | | fixed 0.4 mm | 34 | 10.4 | 24 | 0 |
 | | geometry | 100 (unchanged) | 30.6 | 62 | 0 |
@@ -103,4 +105,5 @@ working on its printers; this is unverified on the A1.
   the same target. Filament-specific start/end G-code of the *old* filament comes from that block.
 * Bed/nozzle temperature and fan changes between first layer and the rest are restored per unit,
   so the first-layer settings can switch back and forth while early layers are still being batched.
-* Head profile, interface strength between batches, and stringing are unmeasured.
+* Toolhead/part-cooling-duct geometry beyond the hotend, interface strength between batches, and
+  stringing are unmeasured.
