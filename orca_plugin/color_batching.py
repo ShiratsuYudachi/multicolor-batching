@@ -34,14 +34,6 @@ DEFAULTS = {"mode": "geometry", "fixed_height": 0.4, "head_profile": None, "head
             "tip_tolerance": 0.0, "island_gap": 3.5, "tolerance_zones": None}
 
 
-def _cfg(ctx, key):
-    try:
-        v = ctx.config_value(key)
-    except Exception:  # noqa: BLE001 - binding raises on unknown keys in some builds
-        return None
-    return None if v is None else str(v)
-
-
 class ColorBatching(orca.slicing.SlicingPipelineCapabilityBase):
     def get_name(self):
         return "Color Batching"
@@ -58,10 +50,6 @@ class ColorBatching(orca.slicing.SlicingPipelineCapabilityBase):
             return orca.ExecutionResult.failure(orca.PluginResult.RecoverableError, f"bad plugin config: {exc}")
         if conf["mode"] == "off":
             return orca.ExecutionResult.skipped("mode = off")
-        if _cfg(ctx, "enable_prime_tower") in ("1", "true"):
-            return orca.ExecutionResult.skipped("prime tower is enabled; batching needs it off")
-        if (_cfg(ctx, "print_sequence") or "by layer") != "by layer":
-            return orca.ExecutionResult.skipped("print sequence is not 'by layer'")
         try:
             with open(ctx.gcode_path, encoding="utf-8") as f:
                 text = f.read()
@@ -77,6 +65,8 @@ class ColorBatching(orca.slicing.SlicingPipelineCapabilityBase):
             out, stats = batch_gcode(text, opts)
         except Exception as exc:  # noqa: BLE001 - leave the file untouched on any failure
             return orca.ExecutionResult.failure(orca.PluginResult.RecoverableError, f"batching failed: {exc!r}")
+        if stats.get("skipped"):
+            return orca.ExecutionResult.skipped(stats["skipped"])
         # Rewrite in place (same path): Orca re-reads this file for the preview afterwards.
         try:
             with open(ctx.gcode_path, "w", encoding="utf-8", newline="\n") as f:

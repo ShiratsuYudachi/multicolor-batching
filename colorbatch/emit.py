@@ -25,13 +25,19 @@ HOP = 0.4  # extra margin added on top of the required clearance when lifting
 
 
 def flush_matrix(cfg: dict[str, str], n_tools: int) -> np.ndarray:
+    """Flush volumes [from, to] (mm^3) x flush_multiplier. Multi-nozzle profiles store one n x n
+    block per nozzle; the first (only, for a single nozzle) block is used."""
     vals = [float(v) for v in cfg.get("flush_volumes_matrix", "").split(",") if v.strip()]
     mult = float(cfg.get("flush_multiplier", "1").split(",")[0])
-    n = int(round(len(vals) ** 0.5)) if vals else 0
-    m = np.full((max(n, n_tools), max(n, n_tools)), 280.0)
+    colours = [c for c in re.split(r"[;,]", cfg.get("filament_colour", "")) if c.strip()]
+    n = len(colours) if colours and vals and len(vals) % (len(colours) ** 2) == 0 else int(round(len(vals) ** 0.5))
+    if n * n > len(vals):
+        n = 0
+    size = max(n, n_tools)
+    m = np.full((size, size), 280.0)
     np.fill_diagonal(m, 0.0)
     if n:
-        m[:n, :n] = np.array(vals).reshape(n, n)
+        m[:n, :n] = np.array(vals[:n * n]).reshape(n, n)
     return m * mult
 
 

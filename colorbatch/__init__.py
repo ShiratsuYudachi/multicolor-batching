@@ -53,16 +53,38 @@ class Options:
         return HeadModel.geometry(**kw)
 
 
+def unsupported_reason(cfg: dict[str, str]) -> str | None:
+    """Why this G-code cannot be batched (from its own config block), or None."""
+    def truthy(key):
+        return str(cfg.get(key, "")).strip().lower() in ("1", "true")
+    if truthy("enable_prime_tower"):
+        return "prime tower is enabled; batching needs it off"
+    seq = str(cfg.get("print_sequence", "by layer")).strip().lower()
+    if seq and seq != "by layer":
+        return f"print sequence is '{seq}', batching needs 'by layer'"
+    nozzles = [v for v in str(cfg.get("nozzle_diameter", "")).split(",") if v.strip()]
+    if len(nozzles) > 1:
+        return f"{len(nozzles)}-nozzle printer; batching supports single-nozzle multi-material only"
+    if "M620 S" not in "".join(cfg.get("change_filament_gcode", "M620 S")):
+        return "no AMS tool-change G-code"
+    return None
+
+
 def batch_gcode(text: str, opts: Options) -> tuple[str, dict]:
     """Return (new G-code, stats).
 
     Each unit granularity (islands, and whole layer-per-colour runs) is scheduled with every
     strategy in opts.strategies; the order with the least flush volume wins. If none beats
-    Orca's own layer order, the input is returned unchanged.
+    Orca's own layer order, the input is returned unchanged. Unsupported files (see
+    unsupported_reason) are returned unchanged with stats["skipped"] set.
     """
     if opts.mode == "off":
         return text, {"mode": "off"}
-    head = opts.head(read_config(text.splitlines()))
+    cfg = read_config(text.splitlines())
+    reason = unsupported_reason(cfg)
+    if reason:
+        return text, {"mode": opts.mode, "skipped": reason}
+    head = opts.head(cfg)
     zones = [tuple(map(float, z)) for z in (opts.tolerance_zones or [])] if opts.mode == "geometry" else []
     gaps = [opts.island_gap, 0.0] if opts.mode == "geometry" and opts.island_gap > 0 else [0.0]
     if zones:  # zones are per island: whole-layer units would straddle them
