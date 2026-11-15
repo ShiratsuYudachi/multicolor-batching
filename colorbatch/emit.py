@@ -148,8 +148,12 @@ class Emitter:
             if s.tool != tool:
                 lines, retracted = self.block_lines(tool, s.tool, max(hm.max, s.z))
                 for ln in lines:
+                    rep = self._spiral_lift(ln, st, hm) if is_move(ln) else None
+                    if rep is not None:
+                        out += rep
+                        continue
                     st.feed(ln)
-                out.extend(lines)
+                    out.append(ln)
                 tool = s.tool
             out += ["; CHANGE_LAYER", f"; Z_HEIGHT: {s.z:g}", f"; LAYER_HEIGHT: {s.layer_height:g}"]
             if s.layer not in layer_seen:
@@ -210,11 +214,32 @@ class Emitter:
         out += self._lift_to(st, z1)
         return out
 
+    def _spiral_lift(self, ln: str, st: MachineState, hm: HeightMap) -> list[str] | None:
+        """Orca's spiral z-hop (G2/G3 with I/J but no X/Y: a full circle while lifting) sweeps
+        ~1.2 mm around the nozzle. If that circle passes too close to taller printed material,
+        return a plain vertical lift to the same height instead; None if the arc is fine."""
+        w = words(ln)
+        if "X" in w or "Y" in w or not ("I" in w or "J" in w):
+            return None
+        pts = np.array(path_points(ln, st.x, st.y))
+        if hm.required_z(pts, st.z, self.head) <= st.z + 1e-6:
+            return None
+        self.stats["spiral_lifts_straightened"] = self.stats.get("spiral_lifts_straightened", 0) + 1
+        f = st.f
+        out = self._lift_to(st, w.get("Z", st.z))
+        out.append(f"G1 F{f:.10g}")
+        st.f = f
+        return out
+
     def _body(self, out: list[str], st: MachineState, s: Segment, hm: HeightMap) -> None:
         for ln in s.body:
             if is_move(ln):
                 w = words(ln)
                 e = w.get("E", 0.0)
+                rep = self._spiral_lift(ln, st, hm) if e == 0 else None
+                if rep is not None:
+                    out += rep
+                    continue
                 if e <= 0 and ("X" in w or "Y" in w):
                     z_after = w.get("Z", st.z)
                     z_path = min(st.z, z_after)  # ramped moves start low: judge by the lower end

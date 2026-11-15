@@ -92,11 +92,13 @@ Collisions come from `report.check_collisions` with the same head model.
 | | fixed 0.4 mm | 34 | 10.4 | 24 | 0 |
 | | geometry | 100 (unchanged) | 30.6 | 62 | 0 |
 | Ki-43 painted 4-colour | Orca | 202 | 61.7 | 202 | – |
-| | fixed 0.4 mm | 93 | 28.4 | 135 | 0 |
+| | fixed 0.4 mm | 139 | 42.5 | 160 | 0 |
 | | geometry | 172 | 52.6 | 178 | 0 |
-| | geometry + 0.4 floor | 84 | 25.7 | 130 | 0 |
+| | geometry + 0.4 floor | 128 | 39.1 | 155 | 0 |
 
-In every run the model extrusion per filament is identical to the source.
+In every run the model extrusion per filament is identical to the source. "Collisions" counts both
+`check_collisions` (head model, including spiral z-hops) and `check_underprint` (extrusion under
+already-printed material, 0.05 mm grid).
 
 Reading: separated colour regions gain the most (pillars −92 % purge). Where colours touch, pure
 geometry mode allows no height step, because the tip land sits over the neighbour. Touching colours

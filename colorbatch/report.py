@@ -137,7 +137,7 @@ def check_collisions(text: str, head: HeadModel, tol: float = 0.05, limit: int =
         x0, y0, z0 = st.x, st.y, st.z
         e, ext = st.feed(ln)
         w = words(ln)
-        if not ("X" in w or "Y" in w):
+        if not ("X" in w or "Y" in w or "I" in w or "J" in w):  # arcs without X/Y are full circles (spiral lifts)
             continue
         pts = np.array(path_points(ln, x0, y0, sample=False))
         zmove = min(z0, st.z)

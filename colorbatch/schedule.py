@@ -200,15 +200,26 @@ def support_deps(segs: list[Segment], reach_layers: int = 1) -> list[list[int]]:
     by_layer: dict[int, list[int]] = {}
     for i, s in enumerate(segs):
         by_layer.setdefault(s.layer, []).append(i)
+    reach = max(1, reach_layers)
     cores = [_core(s.cells) for s in segs]
     deps: list[list[int]] = [[] for _ in segs]
+    anc: list[set[int]] = [set() for _ in segs]  # ancestors within `reach` layers (units come in layer order)
     for i, s in enumerate(segs):
-        for k in range(1, max(1, reach_layers) + 1):
+        for k in range(1, reach + 1):
+            if k == 2:  # deeper pairs already ordered through a chain need no direct test
+                for d in deps[i]:
+                    anc[i].add(d)
+                    anc[i].update(a for a in anc[d] if segs[a].layer >= s.layer - reach)
             for j in by_layer.get(s.layer - k, []):
+                if j in anc[i]:
+                    continue
                 if k == 1 and np.intersect1d(cores[i], cores[j], assume_unique=True).size:
                     deps[i].append(j)
                 elif np.intersect1d(s.cells, segs[j].cells, assume_unique=True).size and _stacked(s, segs[j]):
                     deps[i].append(j)
+                    if k > 1:
+                        anc[i].add(j)
+                        anc[i].update(a for a in anc[j] if segs[a].layer >= s.layer - reach)
     return deps
 
 
