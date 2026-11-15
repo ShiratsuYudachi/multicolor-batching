@@ -277,5 +277,7 @@ class Emitter:
 
 
 def head_allow(head: HeadModel, d: np.ndarray) -> np.ndarray:
-    hs = np.array(head.heights + (head.far,))
+    """Clearance per horizontal distance. Beyond the profile it is `beyond` (the lid when the X rod
+    is Y-banded): the rod itself is applied separately per Y band in HeightMap.required_z."""
+    hs = np.array(head.heights + (head.beyond,))
     return hs[np.searchsorted(np.array(head.radii), d, side="right")]
