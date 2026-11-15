@@ -13,17 +13,18 @@ import bisect
 import math
 from dataclasses import dataclass
 
-# Bambu Lab A1 / A1 mini 0.4 mm hotend (same hotend on both). Derived from the community-measured
-# hotend CAD "Bambulab A1 Hotend" (Printables 879230, A1_Hotend.step): for each band start r the
-# value is the lowest point of the hotend at horizontal distance >= r from the nozzle axis
-# (axisymmetric, i.e. worst direction). Tip land radius 0.52 mm; cone up to the silicone sock,
-# whose flat bottom sits 1.9 mm above the tip out to r = 10.5 mm; sock chamfer to r = 12 mm.
-# Beyond 12 mm the CAD has only the hotend, not the toolhead shell / part-cooling duct: 4.9 mm out
-# to 30 mm is an ASSUMPTION (duct not lower than the sock edge) until measured on the printer.
-# Past that, Orca's extruder_clearance_height_to_rod = 25 mm.
+# Bambu Lab A1 / A1 mini 0.4 mm hotend + toolhead. Each band value is the lowest point of the head
+# at horizontal distance >= band start from the nozzle axis (axisymmetric = worst direction), taking
+# the lower of two independently measured community CAD models:
+#  * hotend:   Printables 879230 "Bambulab A1 Hotend" -- tip land r 0.5 mm, cone, silicone sock
+#              flat at 1.9 mm out to r 10.5 mm, chamfer to r 12 mm;
+#  * printer:  MakerWorld 770920 "Bambulab A1 CAD step model" (measured on a 5/2024 A1, +-0.2 mm) --
+#              heater block at 2.7 mm, toolhead shell / duct bottom flat at 5.4 mm reaching r 72 mm
+#              (in one direction; 18-28 mm in the others), X gantry beam 27.4 mm above the tip.
+# Beyond the shell, Orca's extruder_clearance_height_to_rod = 25 mm (below the CAD's 27.4 mm).
 A1_PROFILE: list[tuple[float, float]] = [
     (0.6, 0.0),
-    (0.75, 0.21),
+    (0.75, 0.17),
     (1.0, 0.5),
     (1.25, 0.98),
     (1.5, 1.5),
@@ -31,7 +32,8 @@ A1_PROFILE: list[tuple[float, float]] = [
     (11.0, 2.1),
     (11.5, 3.1),
     (12.0, 4.1),
-    (30.0, 4.9),
+    (12.25, 4.9),
+    (72.0, 5.4),
 ]
 A1_FAR = 25.0
 

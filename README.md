@@ -32,11 +32,13 @@ Plugin config (Plugins › Config, JSON):
 | `tip_tolerance` | `0` | geometry mode: height floor added to every band (empirical squish tolerance, e.g. 0.4) |
 | `island_gap` | `3.5` | geometry mode: islands of one colour farther apart than this are scheduled separately |
 
-The default A1 head profile in `colorbatch/head.py` comes from the community-measured hotend CAD
-[Bambulab A1 Hotend (Printables 879230)](https://www.printables.com/model/879230-bambulab-a1-hotend):
-tip land r 0.52 mm, cone, silicone-sock bottom 1.9 mm above the tip out to r 10.5 mm. The CAD has
-no toolhead shell or part-cooling duct, so 4.9 mm for r 12–30 mm is an assumption. Past 30 mm the
-profile uses the X-rod clearance of 25 mm from the Orca profile. Check the duct on the printer.
+The default A1 head profile in `colorbatch/head.py` takes the lower of two community-measured CAD models:
+[Bambulab A1 Hotend (Printables 879230)](https://www.printables.com/model/879230-bambulab-a1-hotend)
+(tip land r 0.5 mm, cone, silicone-sock bottom 1.9 mm above the tip out to r 10.5 mm) and the full
+[Bambulab A1 CAD step model (MakerWorld 770920)](https://makerworld.com/en/models/770920-bambulab-a1-cad-step-model)
+(heater block 2.7 mm, no sock; toolhead shell/duct bottom 5.4 mm, reaching r 72 mm on one side; X gantry
+27.4 mm). Beyond the shell the profile uses Orca's X-rod clearance of 25 mm. Both models are
+hand-measured (±0.2 mm claimed for the full printer); the two disagree on the sock (1.9 vs 2.7 mm).
 
 ## CLI
 
