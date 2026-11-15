@@ -38,19 +38,26 @@ def flush_matrix(cfg: dict[str, str], n_tools: int) -> np.ndarray:
 class HeightMap:
     def __init__(self):
         self.h = np.zeros((GRID, GRID), dtype=np.float32)
+        self.row_max = np.zeros(GRID, dtype=np.float32)  # tallest material per Y row (for the X rod)
         self.max = 0.0
 
     def add(self, cells: np.ndarray, z: float) -> None:
         ix, iy = decode(cells)
         np.maximum.at(self.h, (ix, iy), np.float32(z))
+        np.maximum.at(self.row_max, iy, np.float32(z))
         self.max = max(self.max, z)
 
     def required_z(self, pts: np.ndarray, z: float, head: HeadModel) -> float:
         """Lowest nozzle z at which the head can pass over polyline `pts` (N,2 mm)."""
         if self.max <= z + 1e-6:
             return z
-        # `far` bounds every band, so applying it to all material is exact for the far field.
-        need = max(z, self.max - head.far)
+        # Far field: `beyond` (lid, or far without a Y-banded rod) bounds every band, so applying it
+        # to all material is exact; the rod clearance applies to material within its Y band.
+        need = max(z, self.max - head.beyond)
+        if head.rod_band is not None:
+            j0 = max(int(np.floor((pts[:, 1].min() - head.rod_band) / CELL)) + 1024, 0)
+            j1 = int(np.floor((pts[:, 1].max() + head.rod_band) / CELL)) + 1025
+            need = max(need, float(self.row_max[j0:j1].max()) - head.far)
         if not head.radii:
             return need
         m = head.reach + 1.0

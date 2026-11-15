@@ -40,17 +40,24 @@ A1_FAR = 25.0
 
 @dataclass(frozen=True)
 class HeadModel:
+    """`far` is the clearance beyond the profile. With `rod_band` set it is the X-gantry clearance
+    (the rod spans the whole X axis): it only applies to obstacles whose Y distance from the nozzle
+    is within `rod_band`; farther in Y only the lid/frame clearance `lid` applies (Orca's sequential
+    printing model: extruder_clearance_height_to_rod / _dist_to_rod / _height_to_lid)."""
     radii: tuple[float, ...]
     heights: tuple[float, ...]
     far: float
     name: str = "custom"
+    rod_band: float | None = None
+    lid: float | None = None
 
     @staticmethod
     def fixed(h: float) -> "HeadModel":
         return HeadModel((), (), h, f"fixed {h:g} mm")
 
     @staticmethod
-    def geometry(profile=A1_PROFILE, far=A1_FAR, name="A1 geometry", min_clearance: float = 0.0) -> "HeadModel":
+    def geometry(profile=A1_PROFILE, far=A1_FAR, name="A1 geometry", min_clearance: float = 0.0,
+                 rod_band: float | None = None, lid: float | None = None) -> "HeadModel":
         """min_clearance > 0 adds an empirical floor (ITC-style squish tolerance) to every band."""
         prof = sorted(profile)
         hs: list[float] = []
@@ -59,14 +66,25 @@ class HeadModel:
             hs.append(max(h, hs[-1]) if hs else h)
         if min_clearance > 0:
             name = f"{name} + {min_clearance:g} mm floor"
-        return HeadModel(tuple(r for r, _ in prof), tuple(hs), max(far, hs[-1] if hs else far), name)
+        far = max(far, hs[-1] if hs else far)
+        if rod_band is not None:
+            name += f", X rod {far:g} mm within ±{rod_band:g} mm in Y"
+            lid = max(lid if lid is not None else far, far)
+        return HeadModel(tuple(r for r, _ in prof), tuple(hs), far, name, rod_band, lid)
+
+    @property
+    def beyond(self) -> float:
+        """Largest clearance anywhere beyond the profile (lid if the rod is Y-banded, else far)."""
+        return self.lid if self.rod_band is not None and self.lid is not None else self.far
 
     def allow(self, d: float) -> float:
+        """Clearance at horizontal distance d, assuming the obstacle may lie under the X rod."""
         i = bisect.bisect_right(self.radii, d)
         return self.heights[i] if i < len(self.radii) else self.far
 
     def min_distance(self, dz: float) -> float:
-        """Smallest horizontal distance at which an obstacle dz above the tip is tolerated."""
+        """Smallest horizontal distance at which an obstacle dz above the tip is tolerated
+        (ignoring the Y-band rule: under the rod)."""
         if dz <= 1e-9:
             return 0.0
         prev_r = 0.0

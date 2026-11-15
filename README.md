@@ -59,6 +59,12 @@ material than the model allows.
 * `colorbatch/schedule.py` orders the units. A unit u is printable when the units under it are
   printed (support) and when (a) every printed taller unit is far enough away for the head profile
   and (b) every unprinted lower unit stays printable afterwards, so the scheduler never deadlocks.
+  "Under it" is ITC's criterion done with exact polygons (shapely): every extrusion line is buffered
+  to its width minus 0.1 mm per side; overlap with a unit up to tolerance/layer-height layers below
+  makes that unit a prerequisite, so a colour never overhangs an unprinted one (sloped interfaces).
+  The X gantry follows Orca's sequential-printing model, read from the G-code config: parts taller
+  than `extruder_clearance_height_to_rod` only block the nozzle within `extruder_clearance_dist_to_rod`
+  in Y (the rod spans all of X); beyond that `extruder_clearance_height_to_lid` applies.
   Two strategies run, `snake` (alternating tool sweeps) and `greedy` (look-ahead per switch), on both
   island units and whole-layer units. The order with the least flush volume is kept. If none beats
   Orca's own order, the file is left unchanged.

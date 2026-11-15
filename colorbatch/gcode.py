@@ -100,7 +100,7 @@ class Segment:
     extruded: float = 0.0
     feature: str | None = None   # "; FEATURE: ..." in effect at the first extrusion (preview tag)
     width: float = 0.45          # line width in effect at the first extrusion
-    samples: np.ndarray | None = None  # (N, 3) extrusion centre-line samples: x, y, half width (mm)
+    paths: list | None = None    # per extrusion line: (N, 3) centre-line points x, y and half width (mm)
 
 
 @dataclass
@@ -522,6 +522,6 @@ def _build_units(idx0, layer, lines, st0, tool, label, prev, layer_start, island
         seg.extruded = sum(e_of[k] for c in members for k in chunks[c][2])
         seg.tail_r = tail_r(members[-1])
         seg.cells = np.unique(np.concatenate([chunks[c][3] for c in members]))
-        seg.samples = np.array([p for c in members for k in chunks[c][2] for p in samples[k]], dtype=float)
+        seg.paths = [np.array(samples[k], dtype=float) for c in members for k in chunks[c][2]]
         units.append(seg)
     return units, label

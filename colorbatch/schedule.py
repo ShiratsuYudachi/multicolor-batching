@@ -1,7 +1,8 @@
 """Order segments so one colour prints several layers before the next tool change.
 
 Constraints for printing unit u (layer L, tool t, top z_u):
-  support:   every unit of layer L-1 whose footprint touches u's footprint is printed;
+  support:   every unit up to tolerance/layer-height layers below that u's extrusions overlap
+             (exact polygon test, see _stacked) is printed;
   obstacle:  every printed unit w with z_w > z_u is at least head.min_distance(z_w - z_u) away;
   no-block:  every unprinted unit v with z_v < z_u is at least head.min_distance(z_u - z_v) away,
              so printing u never makes a later unit impossible (the lowest unprinted unit is
@@ -10,6 +11,7 @@ Constraints for printing unit u (layer L, tool t, top z_u):
 from __future__ import annotations
 
 import numpy as np
+import shapely
 
 from .gcode import CELL, Segment, cell_centres, decode, encode
 from .head import HeadModel
@@ -45,13 +47,15 @@ class Geometry:
         heads = unit_heads or [head] * len(segs)
         self._hid = np.zeros(self.n, dtype=np.int64)
         self._tables: list[tuple[np.ndarray, np.ndarray]] = []
+        self._rod: list[tuple[float, float] | None] = []  # (rod clearance, Y band) per table
         seen: dict[HeadModel, int] = {}
         for i, hm in enumerate(heads):
             k = seen.get(hm)
             if k is None:
                 k = seen[hm] = len(self._tables)
                 r = np.array(hm.radii + (np.inf,))
-                self._tables.append((np.concatenate([[0.0], r[:-1]]), np.array(hm.heights + (hm.far,))))
+                self._tables.append((np.concatenate([[0.0], r[:-1]]), np.array(hm.heights + (hm.beyond,))))
+                self._rod.append((hm.far, hm.rod_band) if hm.rod_band is not None else None)
             self._hid[i] = k
 
     def min_distance(self, dz: np.ndarray, hid) -> np.ndarray:
@@ -95,9 +99,23 @@ class Geometry:
         nozzle_at_u: the nozzle prints u (others are taller) vs. later prints others (u is taller)."""
         if others.size == 0:
             return True
-        need = self.min_distance(dz, self._hid[u] if nozzle_at_u else self._hid[others])
+        hid = self._hid[u] if nozzle_at_u else self._hid[others]
+        need = self.min_distance(dz, hid)
         if np.isinf(need).any():
             return False
+        # X rod: spans all of X, so an obstacle taller than the rod clearance is only allowed when its
+        # Y extent stays more than the band away from the nozzle's unit (bbox Y gap, conservative).
+        hids = np.broadcast_to(np.asarray(hid), dz.shape)
+        for k in np.unique(hids):
+            rod = self._rod[int(k)]
+            if rod is None:
+                continue
+            tall = (hids == k) & (dz > rod[0] + 1e-9)
+            if tall.any():
+                a, b = self.bbox[u], self.bbox[others[tall]]
+                ygap = np.maximum(b[:, 1] - a[3], a[1] - b[:, 3]) - CELL
+                if (ygap <= rod[1]).any():
+                    return False
         gap = self.bbox_gap(u, others)
         close = gap < need
         for v, nd in zip(others[close], need[close]):
@@ -126,8 +144,9 @@ def _core(cells: np.ndarray) -> np.ndarray:
     return cells[keep] if keep.any() else cells
 
 
-FINE = 0.05     # mm, grid for the stacked-vs-side-by-side test
+FINE = 0.05     # mm, sample spacing for densify (used by the raster under-print check)
 SHRINK = 0.1    # mm taken off each line's half width before testing for overlap
+MIN_OVERLAP = 0.002  # mm^2: narrowed lines overlapping by more than this count as stacked
 
 
 def densify(s: np.ndarray, step: float = FINE, max_gap: float = 0.3) -> np.ndarray:
@@ -145,45 +164,41 @@ def densify(s: np.ndarray, step: float = FINE, max_gap: float = 0.3) -> np.ndarr
     return np.vstack([out, s[-1:]])
 
 
+def _strokes(seg: Segment):
+    """Each extrusion line of `seg` as a polygon: its centre line buffered by (half width - SHRINK).
+    Cached on the segment, with an STRtree for overlap queries."""
+    cached = getattr(seg, "_strokes", None)
+    if cached is None:
+        paths = [p for p in (seg.paths or []) if len(p) and p[0, 2] > SHRINK]
+        if paths:
+            coords = [p[:, :2] if len(p) > 1 else np.vstack([p[:, :2], p[:, :2]]) for p in paths]
+            idx = np.repeat(np.arange(len(coords)), [len(c) for c in coords])
+            lines = shapely.linestrings(np.vstack(coords), indices=idx)
+            polys = shapely.buffer(lines, np.array([p[0, 2] - SHRINK for p in paths]), quad_segs=4)
+        else:
+            polys = np.array([], dtype=object)
+        cached = (polys, shapely.STRtree(polys))
+        seg._strokes = cached
+    return cached
+
+
 def _stacked(upper: Segment, lower: Segment) -> bool:
     """True if `upper`'s extrusions sit on `lower`'s (not just beside them).
 
-    Both are rasterised on a 0.05 mm grid with every line narrowed by SHRINK on each side; any
-    remaining overlap means upper overhangs lower by more than ~2*SHRINK, so lower must go first.
-    Side-by-side colours only touch at the line edges and drop out after the narrowing.
+    Exact polygon test (the ITC criterion: intersection with unfinished regions of the layer
+    below): every extrusion line becomes a polygon narrowed by SHRINK per side; if upper's and
+    lower's narrowed lines overlap by more than MIN_OVERLAP mm^2, upper overhangs lower and lower
+    must be printed first. Side-by-side colours only touch at the line edges and drop out after
+    the narrowing.
     """
-    a, b = upper.samples, lower.samples
-    if a is None or b is None or not len(a) or not len(b):
+    pu, _ = _strokes(upper)
+    pl, tree = _strokes(lower)
+    if not len(pu) or not len(pl):
         return False
-    m = float(max(a[:, 2].max(), b[:, 2].max()))
-    lo = np.maximum(a[:, :2].min(0), b[:, :2].min(0)) - m
-    hi = np.minimum(a[:, :2].max(0), b[:, :2].max(0)) + m
-    if (hi <= lo).any():
+    iu, il = tree.query(pu, predicate="intersects")
+    if not len(iu):
         return False
-    shape = np.ceil((hi - lo) / FINE).astype(int) + 1
-
-    def stamp(s):
-        s = s[np.all((s[:, :2] >= lo - 0.5) & (s[:, :2] <= hi + 0.5), axis=1)]
-        s = densify(s)
-        s = s[np.all((s[:, :2] >= lo - s[:, 2:3]) & (s[:, :2] <= hi + s[:, 2:3]), axis=1)]
-        grid = np.zeros(shape, dtype=bool)
-        for r in np.unique(s[:, 2]):
-            rr = r - SHRINK
-            if rr <= 0:
-                continue
-            k = int(np.ceil(rr / FINE))
-            g = np.arange(-k, k + 1)
-            dx, dy = np.meshgrid(g, g, indexing="ij")
-            disk = (dx * dx + dy * dy) * FINE * FINE <= rr * rr
-            ox, oy = dx[disk], dy[disk]
-            c = np.round((s[s[:, 2] == r, :2] - lo) / FINE).astype(int)
-            ix = (c[:, None, 0] + ox[None]).ravel()
-            iy = (c[:, None, 1] + oy[None]).ravel()
-            ok = (ix >= 0) & (iy >= 0) & (ix < shape[0]) & (iy < shape[1])
-            grid[ix[ok], iy[ok]] = True
-        return grid
-
-    return bool((stamp(a) & stamp(b)).any())
+    return float(shapely.area(shapely.intersection(pu[iu], pl[il])).sum()) > MIN_OVERLAP
 
 
 def support_deps(segs: list[Segment], reach_layers: int = 1) -> list[list[int]]:

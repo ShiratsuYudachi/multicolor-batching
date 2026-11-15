@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["numpy"]
+# dependencies = ["numpy", "shapely"]
 #
 # [tool.orcaslicer.plugin]
 # name = "Color Batching"

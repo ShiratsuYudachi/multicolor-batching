@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from .emit import Emitter
-from .gcode import cell_centres, split
+from .gcode import cell_centres, read_config, split
 from .head import HeadModel
 from .progress import retime
 from .schedule import Scheduler
@@ -25,14 +25,31 @@ class Options:
     # in a zone use that tip_tolerance instead of the global one (geometry mode, island units only).
     tolerance_zones: list | None = None
 
-    def head(self) -> HeadModel:
+    def head(self, printer_cfg: dict | None = None) -> HeadModel:
+        """printer_cfg: the G-code's config block. In geometry mode its X-rod/lid clearances
+        (extruder_clearance_height_to_rod / _dist_to_rod / _height_to_lid) model the gantry:
+        the rod limit only applies to parts within dist_to_rod in Y of the nozzle."""
         if self.mode == "fixed":
             return HeadModel.fixed(self.fixed_height)
         kw = {"min_clearance": self.tip_tolerance}
         if self.head_profile:
             kw["profile"] = [tuple(x) for x in self.head_profile]
+        cfg = printer_cfg or {}
+
+        def num(key):
+            try:
+                return float(str(cfg[key]).split(",")[0])
+            except (KeyError, ValueError):
+                return None
+
+        rod, band, lid = (num("extruder_clearance_height_to_rod"), num("extruder_clearance_dist_to_rod"),
+                          num("extruder_clearance_height_to_lid"))
         if self.head_far is not None:
             kw["far"] = self.head_far
+        elif rod:
+            kw["far"] = rod
+        if band and lid:
+            kw.update(rod_band=band, lid=lid)
         return HeadModel.geometry(**kw)
 
 
@@ -45,7 +62,7 @@ def batch_gcode(text: str, opts: Options) -> tuple[str, dict]:
     """
     if opts.mode == "off":
         return text, {"mode": "off"}
-    head = opts.head()
+    head = opts.head(read_config(text.splitlines()))
     zones = [tuple(map(float, z)) for z in (opts.tolerance_zones or [])] if opts.mode == "geometry" else []
     gaps = [opts.island_gap, 0.0] if opts.mode == "geometry" and opts.island_gap > 0 else [0.0]
     if zones:  # zones are per island: whole-layer units would straddle them
@@ -58,7 +75,7 @@ def batch_gcode(text: str, opts: Options) -> tuple[str, dict]:
         em = Emitter(parsed, head)
         unit_heads = None
         if zones:
-            zone_head = {t: replace(opts, tip_tolerance=t).head() for _, _, t in zones}
+            zone_head = {t: replace(opts, tip_tolerance=t).head(parsed.config) for _, _, t in zones}
             unit_heads = []
             for s in parsed.segments:
                 x = float(cell_centres(s.cells)[:, 0].mean())

@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from colorbatch import Options, batch_gcode  # noqa: E402
+from colorbatch.gcode import read_config  # noqa: E402
 from colorbatch.report import check_collisions, check_underprint, metrics  # noqa: E402
 
 MODES = {
@@ -31,7 +32,7 @@ def main(names: list[str]) -> None:
             dt = time.time() - t0
             (src.parent / f"{mname}.gcode").write_text(out, encoding="utf-8", newline="\n")
             m = metrics(out)
-            coll = check_collisions(out, opts.head()) + check_underprint(out)
+            coll = check_collisions(out, opts.head(read_config(text.splitlines()))) + check_underprint(out)
             same = m["model_mm3_by_tool"] == base["model_mm3_by_tool"]
             note = ("" if same else "MODEL VOLUME MISMATCH ") + f"{stats['strategy']} {stats.get('candidates')} " \
                 + f"units={stats['segments']} " \
