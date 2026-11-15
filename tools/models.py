@@ -46,11 +46,60 @@ def split_cube():
     return [(box(10, 20, 20, cx=-5), 1), (box(10, 20, 20, cx=5), 2)]
 
 
-MODELS = {"pillars": pillars, "keychain": keychain, "figurine": figurine, "split_cube": split_cube}
+def square_pillars(gap: float, grid: bool = False, size: float = 8.0, height: float = 20.0):
+    """4 square pillars (one colour each) with `gap` mm between faces, in a row or a 2x2 grid."""
+    pitch = size + gap
+    pos = [((i % 2) * pitch, (i // 2) * pitch) for i in range(4)] if grid else [(i * pitch, 0.0) for i in range(4)]
+    return [(box(size, size, height, cx=x, cy=y), i + 1) for i, (x, y) in enumerate(pos)]
+
+
+def mixed_gaps():
+    """One row, three different gaps between neighbours (0.5, 3, 12 mm): all regimes on one plate."""
+    xs, x = [], 0.0
+    for g in (0.0, 0.5, 3.0, 12.0):
+        x += g + (8.0 if xs else 0.0)
+        xs.append(x)
+    return [(box(8, 8, 20, cx=cx), i + 1) for i, cx in enumerate(xs)]
+
+
+def _flower(r0: float, h: float, top_scale: float, petals=6, amp=0.15, n=180):
+    import numpy as np
+    from shapely.geometry import Polygon
+    t = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    r = r0 * (1 + amp * np.sin(petals * t))
+    m = trimesh.creation.extrude_polygon(Polygon(np.c_[r * np.cos(t), r * np.sin(t)]), h)
+    v = m.vertices.copy()
+    v[:, :2] *= (1 - (1 - top_scale) * v[:, 2:3] / h)  # taper towards the top
+    m.vertices = v
+    return m
+
+
+def cb_demo():
+    """Approximation of the Color Batching README test: a 20x20x10 box split diagonally into two
+    colours, and a tapered flower-outline mound with a colour-2 skin over a colour-1 core."""
+    import numpy as np
+    blk = box(20, 20, 10, cx=-14)
+    n = np.array([-10.0, 0.0, 20.0])  # plane through (x=-24,z=0)..(x=-4,z=10): wedge below it
+    o = np.array([-24.0, 0.0, 0.0])
+    upper = blk.slice_plane(o, n, cap=True)
+    lower = blk.slice_plane(o, -n, cap=True)
+    outer = _flower(9.0, 10.0, 0.6)
+    core = _flower(7.2, 10.0, 0.6)
+    skin = outer.difference(core)
+    for m in (skin, core):
+        m.apply_translation((14.0, 0.0, 0.0))
+    return [(upper, 1), (lower, 2), (core, 1), (skin, 2)]
+
+
+MODELS = {"pillars": pillars, "keychain": keychain, "figurine": figurine, "split_cube": split_cube,
+          "cb_demo": cb_demo, "sq_mixed_gaps": mixed_gaps, "sq_grid_gap3": lambda: square_pillars(3, grid=True),
+          "sq_grid_gap12": lambda: square_pillars(12, grid=True)}
+MODELS.update({f"sq_row_gap{g:g}": (lambda g=g: square_pillars(g)) for g in (0, 1, 3, 6, 12, 25)})
 
 
 if __name__ == "__main__":
-    for name, fn in MODELS.items():
+    import sys
+    for name in sys.argv[1:] or MODELS:
         out = ROOT / "work" / name / "in.3mf"
-        write_3mf(out, fn())
+        write_3mf(out, MODELS[name]())
         print(out)
