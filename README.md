@@ -67,6 +67,10 @@ material than the model allows.
   flush of a block with the same target. Each unit gets a lift/travel/lower move, a state restore,
   a retraction fix and skip-object labels. Travel moves that pass too close to taller parts are lifted.
   Per-layer timelapse snapshots are dropped, because they park the head at layer height.
+* `colorbatch/progress.py` regenerates the printer's progress (`M73 P… R…`) and the header time for
+  the new order. Each line gets a feed-rate-model duration, scaled by two factors (tool-change blocks,
+  everything else) fitted to Orca's own M73 timeline of the source file. Retiming the unchanged source
+  reproduces Orca's total exactly; for the new order it is an estimate in Orca's terms.
 
 ## Evaluation (`python tools/evaluate.py`)
 
@@ -102,8 +106,8 @@ working on its printers; this is unverified on the A1.
 ## Known limits
 
 * Prime tower must be off. "Flush into infill/objects" needs the tower in Orca, so it is unused here.
-* Orca's statistics panel is stale after the rewrite (see above). The `.gcode.3mf` slice info carries
-  the same stale numbers.
+* Orca's statistics panel is stale after the rewrite (see above). The `.gcode.3mf` slice info (shown by
+  Bambu Handy / cloud) carries the same stale numbers. The printer screen uses the regenerated M73.
 * Synthesised tool-change blocks (pairs absent from the source) scale the flush of another block with
   the same target. Filament-specific start/end G-code of the *old* filament comes from that block.
 * Bed/nozzle temperature and fan changes between first layer and the rest are restored per unit,

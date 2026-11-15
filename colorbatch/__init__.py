@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from .emit import Emitter
 from .gcode import cell_centres, split
 from .head import HeadModel
+from .progress import retime
 from .schedule import Scheduler
 
 __all__ = ["Options", "batch_gcode", "HeadModel"]
@@ -82,5 +83,5 @@ def batch_gcode(text: str, opts: Options) -> tuple[str, dict]:
     if flush >= base[1] and not zones:
         return text, dict(stats, strategy="unchanged (no improvement over layer order)",
                           tool_changes=len(parsed.blocks), synth_blocks=0, travel_lifts=0)
-    out = em.emit(order)
-    return out, dict(stats, **em.stats)
+    out, timing = retime(text, em.emit(order))
+    return out, dict(stats, **em.stats, **timing)
