@@ -91,7 +91,18 @@ def cb_demo():
     return [(upper, 1), (lower, 2), (core, 1), (skin, 2)]
 
 
+def slope_box():
+    """The Color Batching README box alone: 20x20x10 mm, split by a 26.6 deg plane into a colour-2
+    wedge underneath and colour 1 on top -- tests the no-overhang rule on a sloped interface."""
+    import numpy as np
+    blk = box(20, 20, 10)
+    n = np.array([-10.0, 0.0, 20.0])  # plane through (x=-10,z=0)..(x=10,z=10)
+    o = np.array([-10.0, 0.0, 0.0])
+    return [(blk.slice_plane(o, n, cap=True), 1), (blk.slice_plane(o, -n, cap=True), 2)]
+
+
 MODELS = {"pillars": pillars, "keychain": keychain, "figurine": figurine, "split_cube": split_cube,
+          "slope_box": slope_box,
           "cb_demo": cb_demo, "sq_mixed_gaps": mixed_gaps, "sq_grid_gap3": lambda: square_pillars(3, grid=True),
           "sq_grid_gap12": lambda: square_pillars(12, grid=True)}
 MODELS.update({f"sq_row_gap{g:g}": (lambda g=g: square_pillars(g)) for g in (0, 1, 3, 6, 12, 25)})

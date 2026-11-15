@@ -217,6 +217,11 @@ def support_deps(segs: list[Segment], reach_layers: int = 1) -> list[list[int]]:
         by_layer.setdefault(s.layer, []).append(i)
     reach = max(1, reach_layers)
     cores = [_core(s.cells) for s in segs]
+    # Prefilter for the exact test: extrusion bounding boxes (grown by the widest half width) must
+    # overlap. (Footprint cells are too coarse here: a 0.4 mm overhang can fall between cells.)
+    boxes = np.array([(lambda a: (a[:, 0].min() - a[:, 2].max(), a[:, 1].min() - a[:, 2].max(),
+                                  a[:, 0].max() + a[:, 2].max(), a[:, 1].max() + a[:, 2].max()))(
+        np.vstack(s.paths)) if s.paths else (np.inf, np.inf, -np.inf, -np.inf) for s in segs])
     deps: list[list[int]] = [[] for _ in segs]
     anc: list[set[int]] = [set() for _ in segs]  # ancestors within `reach` layers (units come in layer order)
     for i, s in enumerate(segs):
@@ -230,7 +235,8 @@ def support_deps(segs: list[Segment], reach_layers: int = 1) -> list[list[int]]:
                     continue
                 if k == 1 and np.intersect1d(cores[i], cores[j], assume_unique=True).size:
                     deps[i].append(j)
-                elif np.intersect1d(s.cells, segs[j].cells, assume_unique=True).size and _stacked(s, segs[j]):
+                elif (boxes[i, 0] <= boxes[j, 2] and boxes[j, 0] <= boxes[i, 2] and boxes[i, 1] <= boxes[j, 3]
+                      and boxes[j, 1] <= boxes[i, 3] and _stacked(s, segs[j])):
                     deps[i].append(j)
                     if k > 1:
                         anc[i].add(j)
