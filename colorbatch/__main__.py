@@ -7,7 +7,7 @@ import sys
 import time
 
 from . import Options, batch_gcode
-from .report import check_collisions, metrics
+from .report import check_collisions, check_underprint, metrics
 
 
 def main(argv=None) -> int:
@@ -37,6 +37,7 @@ def main(argv=None) -> int:
     report = {"stats": stats, "before": before, "after": after}
     if a.check:
         report["collisions"] = check_collisions(out, opts.head())
+        report["underprints"] = check_underprint(out)
     if a.output:
         with open(a.output, "w", encoding="utf-8", newline="\n") as f:
             f.write(out)

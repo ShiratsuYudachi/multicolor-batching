@@ -126,12 +126,76 @@ def _core(cells: np.ndarray) -> np.ndarray:
     return cells[keep] if keep.any() else cells
 
 
-def support_deps(segs: list[Segment]) -> list[list[int]]:
-    """u depends on the units one layer down that actually lie beneath it.
+FINE = 0.05     # mm, grid for the stacked-vs-side-by-side test
+SHRINK = 0.1    # mm taken off each line's half width before testing for overlap
 
-    Cores (eroded footprints) are compared so that side-by-side colours whose rasterised
-    perimeters merely touch do not become supports of each other; their height difference
-    is governed by the head clearance rules instead.
+
+def densify(s: np.ndarray, step: float = FINE, max_gap: float = 0.3) -> np.ndarray:
+    """Insert points every `step` between consecutive samples of the same path (gap <= max_gap),
+    so narrowed line stamps stay continuous instead of dotted."""
+    if len(s) < 2:
+        return s
+    d = np.hypot(*(s[1:, :2] - s[:-1, :2]).T)
+    n = np.where(d <= max_gap, np.ceil(d / step).astype(int), 1)
+    n = np.maximum(n, 1)
+    idx = np.repeat(np.arange(len(s) - 1), n)
+    frac = (np.arange(n.sum()) - np.repeat(np.cumsum(n) - n, n)) / np.repeat(n, n)
+    pts = s[idx, :2] + (s[idx + 1, :2] - s[idx, :2]) * frac[:, None]
+    out = np.column_stack([pts, s[idx, 2]])
+    return np.vstack([out, s[-1:]])
+
+
+def _stacked(upper: Segment, lower: Segment) -> bool:
+    """True if `upper`'s extrusions sit on `lower`'s (not just beside them).
+
+    Both are rasterised on a 0.05 mm grid with every line narrowed by SHRINK on each side; any
+    remaining overlap means upper overhangs lower by more than ~2*SHRINK, so lower must go first.
+    Side-by-side colours only touch at the line edges and drop out after the narrowing.
+    """
+    a, b = upper.samples, lower.samples
+    if a is None or b is None or not len(a) or not len(b):
+        return False
+    m = float(max(a[:, 2].max(), b[:, 2].max()))
+    lo = np.maximum(a[:, :2].min(0), b[:, :2].min(0)) - m
+    hi = np.minimum(a[:, :2].max(0), b[:, :2].max(0)) + m
+    if (hi <= lo).any():
+        return False
+    shape = np.ceil((hi - lo) / FINE).astype(int) + 1
+
+    def stamp(s):
+        s = s[np.all((s[:, :2] >= lo - 0.5) & (s[:, :2] <= hi + 0.5), axis=1)]
+        s = densify(s)
+        s = s[np.all((s[:, :2] >= lo - s[:, 2:3]) & (s[:, :2] <= hi + s[:, 2:3]), axis=1)]
+        grid = np.zeros(shape, dtype=bool)
+        for r in np.unique(s[:, 2]):
+            rr = r - SHRINK
+            if rr <= 0:
+                continue
+            k = int(np.ceil(rr / FINE))
+            g = np.arange(-k, k + 1)
+            dx, dy = np.meshgrid(g, g, indexing="ij")
+            disk = (dx * dx + dy * dy) * FINE * FINE <= rr * rr
+            ox, oy = dx[disk], dy[disk]
+            c = np.round((s[s[:, 2] == r, :2] - lo) / FINE).astype(int)
+            ix = (c[:, None, 0] + ox[None]).ravel()
+            iy = (c[:, None, 1] + oy[None]).ravel()
+            ok = (ix >= 0) & (iy >= 0) & (ix < shape[0]) & (iy < shape[1])
+            grid[ix[ok], iy[ok]] = True
+        return grid
+
+    return bool((stamp(a) & stamp(b)).any())
+
+
+def support_deps(segs: list[Segment], reach_layers: int = 1) -> list[list[int]]:
+    """u depends on the units below it that it lies on.
+
+    Cores (footprints eroded by one 0.5 mm cell) that overlap mean plainly stacked units. Units
+    whose footprints only touch are checked on a fine grid (_stacked): a colour that overhangs
+    the one below it by a fraction of a line -- e.g. along a sloped colour interface -- still needs
+    it printed first, while side-by-side colours do not (their height difference is governed by
+    the head clearance rules). The check reaches `reach_layers` down: with a tip tolerance a colour
+    may run that many layers ahead of a touching one, and a slow creep (0.07 mm per layer on a
+    taper) adds up to a real overhang over the unprinted unit.
     """
     by_layer: dict[int, list[int]] = {}
     for i, s in enumerate(segs):
@@ -139,9 +203,12 @@ def support_deps(segs: list[Segment]) -> list[list[int]]:
     cores = [_core(s.cells) for s in segs]
     deps: list[list[int]] = [[] for _ in segs]
     for i, s in enumerate(segs):
-        for j in by_layer.get(s.layer - 1, []):
-            if np.intersect1d(cores[i], cores[j], assume_unique=True).size:
-                deps[i].append(j)
+        for k in range(1, max(1, reach_layers) + 1):
+            for j in by_layer.get(s.layer - k, []):
+                if k == 1 and np.intersect1d(cores[i], cores[j], assume_unique=True).size:
+                    deps[i].append(j)
+                elif np.intersect1d(s.cells, segs[j].cells, assume_unique=True).size and _stacked(s, segs[j]):
+                    deps[i].append(j)
     return deps
 
 
@@ -150,7 +217,11 @@ class Scheduler:
                  unit_heads: list[HeadModel] | None = None):
         self.segs = segs
         self.g = Geometry(segs, head, unit_heads)
-        self.deps = support_deps(segs)
+        # How many layers a colour can run ahead of a touching one: the head's allowance right at
+        # the nozzle (tip tolerance, or the fixed height) over the thinnest layer.
+        tip = max(h.allow(0.0) for h in (unit_heads or [head]))
+        min_lh = min((s.layer_height for s in segs if s.layer_height > 0), default=0.2)
+        self.deps = support_deps(segs, 1 + int(np.ceil(tip / min_lh - 1e-9)))
         self.flush = flush
         self.first_tool = first_tool
         self.extr = np.array([s.extruded for s in segs])

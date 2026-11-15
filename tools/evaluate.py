@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from colorbatch import Options, batch_gcode  # noqa: E402
-from colorbatch.report import check_collisions, metrics  # noqa: E402
+from colorbatch.report import check_collisions, check_underprint, metrics  # noqa: E402
 
 MODES = {
     "fixed0.4": Options(mode="fixed", fixed_height=0.4),
@@ -31,14 +31,14 @@ def main(names: list[str]) -> None:
             dt = time.time() - t0
             (src.parent / f"{mname}.gcode").write_text(out, encoding="utf-8", newline="\n")
             m = metrics(out)
-            coll = check_collisions(out, opts.head())
+            coll = check_collisions(out, opts.head()) + check_underprint(out)
             same = m["model_mm3_by_tool"] == base["model_mm3_by_tool"]
             note = ("" if same else "MODEL VOLUME MISMATCH ") + f"{stats['strategy']} {stats.get('candidates')} " \
                 + f"units={stats['segments']} " \
                 + (f"synth={stats['synth_blocks']} " if stats["synth_blocks"] else "") \
                 + (f"lifts={stats['travel_lifts']}" if stats["travel_lifts"] else "")
             rows.append((name, mname, m, str(len(coll)), dt, note))
-    print("| model | order | tool changes | purge cm³ | model cm³ | purge/model | est. min | collisions | run s | notes |")
+    print("| model | order | tool changes | purge cm³ | model cm³ | purge/model | est. min | collisions+underprints | run s | notes |")
     print("|---|---|---|---|---|---|---|---|---|---|")
     for name, mode, m, coll, dt, note in rows:
         print(f"| {name} | {mode} | {m['tool_changes']} | {m['purge_mm3'] / 1000:.1f} | {m['model_mm3'] / 1000:.2f} | "

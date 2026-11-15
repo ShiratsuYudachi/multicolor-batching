@@ -10,6 +10,7 @@ import numpy as np
 from .emit import HeightMap
 from .gcode import CELL, MachineState, is_move, path_points, rasterise, read_config, words
 from .head import HeadModel
+from .schedule import densify
 
 _TC = re.compile(r"^M620 S(\d+)A")
 
@@ -58,6 +59,53 @@ def metrics(text: str) -> dict:
         "model_mm3_by_tool": {k: round(v * area, 1) for k, v in sorted(model_e.items())},
         "est_time_min": t_sec / 60.0,
     }
+
+
+def check_underprint(text: str, res: float = 0.05, shrink: float = 0.1, limit: int = 20) -> list[str]:
+    """Replay the file on a fine grid; report extrusions whose nozzle path runs under material that
+    is already printed above it (e.g. a colour printed ahead over an unprinted one beneath).
+    Lines are narrowed by `shrink` per side so side-by-side neighbours do not count."""
+    lines = text.splitlines()
+    body = next(i for i, ln in enumerate(lines) if ln.startswith("; CHANGE_LAYER"))
+    end = max(i for i, ln in enumerate(lines) if ln.startswith("; FEATURE: Custom"))
+    st = MachineState()
+    for ln in lines[:body]:
+        st.feed(ln)
+    moves = []
+    width = 0.45
+    for i in range(body, end):
+        ln = lines[i]
+        if ln.startswith("; LINE_WIDTH:"):
+            width = float(ln.split(":", 1)[1])
+        x0, y0 = st.x, st.y
+        _, ext = st.feed(ln)
+        if ext:
+            p = np.array(path_points(ln, x0, y0))
+            moves.append((i, densify(np.column_stack([p, np.zeros(len(p))]), step=res)[:, :2], st.z, width / 2))
+    if not moves:
+        return []
+    allp = np.vstack([m[1] for m in moves])
+    lo = allp.min(0) - 1.0
+    shape = np.ceil((allp.max(0) + 1.0 - lo) / res).astype(int) + 1
+    top = np.zeros(shape, dtype=np.float32)
+    disks: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+    issues = []
+    for i, pts, z, hw in moves:
+        c = np.round((pts - lo) / res).astype(int)
+        above = top[c[:, 0], c[:, 1]] - z
+        if (above > 1e-3).any():
+            issues.append(f"line {i + 1}: z={z:.2f} under material at {z + float(above.max()):.2f}: {lines[i].strip()}")
+            if len(issues) >= limit:
+                break
+        k = int(np.ceil(max(hw - shrink, 0.0) / res))
+        if k not in disks:
+            g = np.arange(-k, k + 1)
+            dx, dy = np.meshgrid(g, g, indexing="ij")
+            m = (dx * dx + dy * dy) * res * res <= max(hw - shrink, 0.0) ** 2
+            disks[k] = (dx[m], dy[m])
+        ox, oy = disks[k]
+        np.maximum.at(top, ((c[:, None, 0] + ox).ravel(), (c[:, None, 1] + oy).ravel()), np.float32(z))
+    return issues
 
 
 def check_collisions(text: str, head: HeadModel, tol: float = 0.05, limit: int = 20) -> list[str]:
