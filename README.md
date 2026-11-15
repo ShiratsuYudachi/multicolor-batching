@@ -8,6 +8,23 @@ Stage A of plan C: an OrcaSlicer **slicing-pipeline plugin** that rewrites the e
 (`psGCodePostProcess`). No Orca rebuild is needed. Stage B (moving this into the Orca fork
 `Dev/OrcaSlicer-batching`, branch `feature/cross-layer-batching`) is still to do.
 
+## Features
+
+| Feature | Where |
+|---|---|
+| Cross-layer colour batching as an OrcaSlicer plugin (no Orca rebuild), modes `off` / `fixed` (ITC-style single height) / `geometry` (print-head shape) | `orca_plugin/`, `colorbatch/` |
+| A1 print-head clearance profile from two measured CAD models (hotend + full printer: tip, cone, sock, toolhead shell) | `colorbatch/head.py` |
+| X-gantry check per Y band (rod only blocks parts within `extruder_clearance_dist_to_rod` in Y), values read from the G-code's printer config, as in Orca's sequential printing | `head.py`, `schedule.py`, `emit.py` |
+| Tip tolerance for touching colours (`tip_tolerance`, "geometry + tolerance") | `head.py`, plugin config |
+| One-print tolerance calibration: per-zone tolerances (`tolerance_zones`) + five-pair test plate | `__init__.py`, `tools/models.py tol_test` |
+| No overhang over unprinted colours on sloped interfaces: exact polygon test (ITC criterion, shapely), checked several layers down | `schedule.py` (`_stacked`, `support_deps`) |
+| Independent output checks: head collisions (incl. spiral z-hops) and printing under existing material | `colorbatch/report.py`, `--check` |
+| Printer progress / remaining time (M73) regenerated for the new order, calibrated to Orca's estimate | `colorbatch/progress.py` |
+| Never worse than Orca's order; unsupported files (prime tower, by-object, multi-nozzle) left unchanged with a reason | `__init__.py` |
+| Among equally good orders, prefer the one whose parts left standing rise least above the clearances | `schedule.py` (greedy tie-break) |
+| Test models (pillars, square-pillar layouts, Color Batching demo shape, figurine, keychain, split cube), headless slicing and evaluation | `tools/models.py`, `tools/slice.py`, `tools/evaluate.py` |
+| Squeeze a plate to the clearance limits for a physical test | `tools/limit_layout.py` |
+
 ## Use in OrcaSlicer (≥ 2.5.0)
 
 1. `python tools/install_plugin.py` copies the plugin to `%APPDATA%\OrcaSlicer\orca_plugins\color_batching`.

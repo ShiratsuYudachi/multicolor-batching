@@ -357,13 +357,18 @@ class Scheduler:
                     nxt = next((t for t in seq[seq.index(tool) + 1:] + seq if t in avail), None)
                 tool = nxt
             else:
-                best, best_score = None, -1.0
+                # Ties (equal gain per flush) go to the batch that ends lowest: the parts left
+                # standing while the other colours print then rise least above the clearances, so
+                # a clearance-model error costs least. Uses the look-ahead runs already computed.
+                best, best_key = None, None
                 for t in sorted(avail):
                     run = self.batch(self._copy(state), t, pos)
                     gain = float(self.extr[run].sum()) if run else 0.0
-                    score = gain / (self.flush[tool, t] + 1.0)
-                    if gain > 0 and score > best_score:
-                        best, best_score = t, score
+                    if gain <= 0:
+                        continue
+                    key = (round(gain / (self.flush[tool, t] + 1.0), 6), -float(self.g.z[run].max()))
+                    if best_key is None or key > best_key:
+                        best, best_key = t, key
                 tool = best
             if tool is None:
                 raise RuntimeError("no printable unit: scheduler invariant broken")
