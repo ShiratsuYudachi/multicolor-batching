@@ -17,7 +17,8 @@ Config (Plugins > Config tab, or per-preset override):
    "head_profile": [[0.5, 0.0], [1.0, 0.2], ...] | null,   # geometry mode: (radius, height) steps
    "head_far": 25.0 | null,                 # clearance beyond the profile (X-rod)
    "tip_tolerance": 0.0,                    # geometry mode: height floor for every band (mm)
-   "island_gap": 3.5}                       # mm; colour islands farther apart are scheduled separately (0 = off)
+   "island_gap": 3.5,                       # mm; colour islands farther apart are scheduled separately (0 = off)
+   "tolerance_zones": null}                 # calibration: [[x_min, x_max, tolerance], ...] in bed X (mm)
 """
 import json
 import os
@@ -30,7 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from colorbatch import Options, batch_gcode  # noqa: E402
 
 DEFAULTS = {"mode": "geometry", "fixed_height": 0.4, "head_profile": None, "head_far": None,
-            "tip_tolerance": 0.0, "island_gap": 3.5}
+            "tip_tolerance": 0.0, "island_gap": 3.5, "tolerance_zones": None}
 
 
 def _cfg(ctx, key):
@@ -70,7 +71,8 @@ class ColorBatching(orca.slicing.SlicingPipelineCapabilityBase):
             return orca.ExecutionResult.skipped("no AMS tool changes in this G-code")
         opts = Options(mode=conf["mode"], fixed_height=float(conf["fixed_height"]),
                        head_profile=conf["head_profile"], head_far=conf["head_far"],
-                       tip_tolerance=float(conf["tip_tolerance"]), island_gap=float(conf["island_gap"]))
+                       tip_tolerance=float(conf["tip_tolerance"]), island_gap=float(conf["island_gap"]),
+                       tolerance_zones=conf["tolerance_zones"])
         try:
             out, stats = batch_gcode(text, opts)
         except Exception as exc:  # noqa: BLE001 - leave the file untouched on any failure

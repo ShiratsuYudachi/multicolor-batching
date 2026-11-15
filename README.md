@@ -31,6 +31,7 @@ Plugin config (Plugins › Config, JSON):
 | `head_far` | `25` | allowed height beyond the profile (X-rod clearance) |
 | `tip_tolerance` | `0` | geometry mode: height floor added to every band (empirical squish tolerance, e.g. 0.4) |
 | `island_gap` | `3.5` | geometry mode: islands of one colour farther apart than this are scheduled separately |
+| `tolerance_zones` | `null` | calibration: `[[x_min, x_max, tolerance], …]` in bed X; islands centred in a zone use that `tip_tolerance`. `tools/models.py tol_test` builds the matching five-pair plate (0 / 0.2 / 0.4 / 0.6 / 0.8 mm, left to right) and `tol_zones()` its zones |
 
 The default A1 head profile in `colorbatch/head.py` takes the lower of two community-measured CAD models:
 [Bambulab A1 Hotend (Printables 879230)](https://www.printables.com/model/879230-bambulab-a1-hotend)

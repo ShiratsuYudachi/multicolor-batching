@@ -97,6 +97,30 @@ MODELS = {"pillars": pillars, "keychain": keychain, "figurine": figurine, "split
 MODELS.update({f"sq_row_gap{g:g}": (lambda g=g: square_pillars(g)) for g in (0, 1, 3, 6, 12, 25)})
 
 
+TOL_VALUES = (0.0, 0.2, 0.4, 0.6, 0.8)
+TOL_PITCH = 44.0  # 24 mm pair + 20 mm gap
+
+
+def tol_test():
+    """Tolerance calibration plate: five pairs of touching 12x12x10 mm blocks (colour 1 | colour 2),
+    left to right for tolerances TOL_VALUES, one tolerance zone per pair (see tol_zones)."""
+    parts = []
+    for i in range(len(TOL_VALUES)):
+        x = i * TOL_PITCH
+        parts += [(box(12, 12, 10, cx=x - 6), 1), (box(12, 12, 10, cx=x + 6), 2)]
+    return parts
+
+
+def tol_zones(bed_centre_x: float = 128.0) -> list[list[float]]:
+    """Bed-X zones for tol_test as placed by write_3mf (assembly centred on the bed)."""
+    shift = bed_centre_x - (len(TOL_VALUES) - 1) * TOL_PITCH / 2
+    return [[round(shift + i * TOL_PITCH - TOL_PITCH / 2, 1), round(shift + i * TOL_PITCH + TOL_PITCH / 2, 1), t]
+            for i, t in enumerate(TOL_VALUES)]
+
+
+MODELS["tol_test"] = tol_test
+
+
 if __name__ == "__main__":
     import sys
     for name in sys.argv[1:] or MODELS:

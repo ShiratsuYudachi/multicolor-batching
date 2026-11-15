@@ -16,7 +16,9 @@ from .head import HeadModel
 
 
 class Geometry:
-    def __init__(self, segs: list[Segment], head: HeadModel):
+    def __init__(self, segs: list[Segment], head: HeadModel, unit_heads: list[HeadModel] | None = None):
+        """unit_heads: optional per-unit head model (the head used when the nozzle prints that
+        unit), e.g. tolerance calibration zones; default `head` for every unit."""
         self.head = head
         self.n = len(segs)
         self.z = np.array([s.z for s in segs])
@@ -40,14 +42,27 @@ class Geometry:
             bbox.append((pts[:, 0].min(), pts[:, 1].min(), pts[:, 0].max(), pts[:, 1].max()))
         self.bbox = np.array(bbox)
         self._dist: dict[tuple[int, int], float] = {}
-        r = np.array(head.radii + (np.inf,))
-        h = np.array(head.heights + (head.far,))
-        self._r_lo = np.concatenate([[0.0], r[:-1]])
-        self._h = h
+        heads = unit_heads or [head] * len(segs)
+        self._hid = np.zeros(self.n, dtype=np.int64)
+        self._tables: list[tuple[np.ndarray, np.ndarray]] = []
+        seen: dict[HeadModel, int] = {}
+        for i, hm in enumerate(heads):
+            k = seen.get(hm)
+            if k is None:
+                k = seen[hm] = len(self._tables)
+                r = np.array(hm.radii + (np.inf,))
+                self._tables.append((np.concatenate([[0.0], r[:-1]]), np.array(hm.heights + (hm.far,))))
+            self._hid[i] = k
 
-    def min_distance(self, dz: np.ndarray) -> np.ndarray:
-        idx = np.searchsorted(self._h, dz - 1e-9, side="left")
-        out = np.where(idx < len(self._h), self._r_lo[np.minimum(idx, len(self._h) - 1)], np.inf)
+    def min_distance(self, dz: np.ndarray, hid) -> np.ndarray:
+        """Required distance for obstacles dz above the nozzle; hid = head table per element (or scalar)."""
+        hid = np.broadcast_to(np.asarray(hid), dz.shape)
+        out = np.zeros(dz.shape)
+        for k in np.unique(hid):
+            r_lo, h = self._tables[int(k)]
+            m = hid == k
+            idx = np.searchsorted(h, dz[m] - 1e-9, side="left")
+            out[m] = np.where(idx < len(h), r_lo[np.minimum(idx, len(h) - 1)], np.inf)
         return np.where(dz <= 1e-9, 0.0, out)
 
     def bbox_gap(self, u: int, others: np.ndarray) -> np.ndarray:
@@ -75,11 +90,12 @@ class Geometry:
             self._dist[key] = d
         return d
 
-    def clear(self, u: int, others: np.ndarray, dz: np.ndarray) -> bool:
-        """True if every unit in `others` (height difference dz>0 to u) keeps its required distance."""
+    def clear(self, u: int, others: np.ndarray, dz: np.ndarray, nozzle_at_u: bool) -> bool:
+        """True if every unit in `others` (height difference dz>0) keeps its required distance.
+        nozzle_at_u: the nozzle prints u (others are taller) vs. later prints others (u is taller)."""
         if others.size == 0:
             return True
-        need = self.min_distance(dz)
+        need = self.min_distance(dz, self._hid[u] if nozzle_at_u else self._hid[others])
         if np.isinf(need).any():
             return False
         gap = self.bbox_gap(u, others)
@@ -130,9 +146,10 @@ def support_deps(segs: list[Segment]) -> list[list[int]]:
 
 
 class Scheduler:
-    def __init__(self, segs: list[Segment], head: HeadModel, flush: np.ndarray, first_tool: int):
+    def __init__(self, segs: list[Segment], head: HeadModel, flush: np.ndarray, first_tool: int,
+                 unit_heads: list[HeadModel] | None = None):
         self.segs = segs
-        self.g = Geometry(segs, head)
+        self.g = Geometry(segs, head, unit_heads)
         self.deps = support_deps(segs)
         self.flush = flush
         self.first_tool = first_tool
@@ -171,10 +188,10 @@ class Scheduler:
         g = self.g
         zu = g.z[u]
         higher = np.nonzero(printed & (g.z > zu + 1e-9))[0]
-        if not g.clear(u, higher, g.z[higher] - zu):
+        if not g.clear(u, higher, g.z[higher] - zu, nozzle_at_u=True):
             return False
         lower = np.nonzero(~printed & (g.z < zu - 1e-9))[0]
-        return g.clear(u, lower, zu - g.z[lower])
+        return g.clear(u, lower, zu - g.z[lower], nozzle_at_u=False)
 
     def _pick(self, state, tool: int, pos) -> int | None:
         cands = state[2].get(tool)
