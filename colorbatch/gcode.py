@@ -101,6 +101,7 @@ class Segment:
     feature: str | None = None   # "; FEATURE: ..." in effect at the first extrusion (preview tag)
     width: float = 0.45          # line width in effect at the first extrusion
     paths: list | None = None    # per extrusion line: (N, 3) centre-line points x, y and half width (mm)
+    support: bool = False        # only support material: any loaded filament may print it
 
 
 @dataclass
@@ -454,6 +455,10 @@ def _build_units(idx0, layer, lines, st0, tool, label, prev, layer_start, island
             continue
         chunks.append((a, b, ks, rasterise([p for k in ks for p in samples[k]])))
 
+    # Support-only chunks (every extrusion is Support / Support interface) become their own units,
+    # so the scheduler may print them with whichever filament is loaded (see Segment.support).
+    is_sup = [bool(ks) and all((feats[k][0] or "").startswith("; FEATURE: Support") for k in ks)
+              for _, _, ks, _ in chunks]
     parent = list(range(len(chunks)))
 
     def find(i):
@@ -466,17 +471,17 @@ def _build_units(idx0, layer, lines, st0, tool, label, prev, layer_start, island
         # Coarse grid with island_gap-sized cells: chunks in the same or neighbouring coarse cells
         # are merged (merges a little more than strictly within the gap; never less).
         k = max(1, int(round(island_gap / CELL)))
-        owner: dict[int, int] = {}
+        owner: dict[tuple[int, bool], int] = {}
         for i, (_, _, _, cells) in enumerate(chunks):
             ix, iy = decode(cells)
             coarse = np.unique(encode(ix // k, iy // k)).tolist()
             for c in coarse:
                 for d in (-8193, -8192, -8191, -1, 0, 1, 8191, 8192, 8193):
-                    j = owner.get(c + d)
+                    j = owner.get((c + d, is_sup[i]))
                     if j is not None and find(i) != find(j):
                         parent[find(i)] = find(j)
             for c in coarse:
-                owner.setdefault(c, i)
+                owner.setdefault((c, is_sup[i]), i)
     clusters: dict[int, list[int]] = {}
     for i in range(len(chunks)):
         clusters.setdefault(find(i), []).append(i)
@@ -522,6 +527,7 @@ def _build_units(idx0, layer, lines, st0, tool, label, prev, layer_start, island
         seg.extruded = sum(e_of[k] for c in members for k in chunks[c][2])
         seg.tail_r = tail_r(members[-1])
         seg.cells = np.unique(np.concatenate([chunks[c][3] for c in members]))
+        seg.support = is_sup[members[0]]
         seg.paths = [np.array(samples[k], dtype=float) for c in members for k in chunks[c][2]]
         units.append(seg)
     return units, label

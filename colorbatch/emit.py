@@ -146,7 +146,10 @@ class Emitter:
         return out, blk.post_r
 
     # -- main -----------------------------------------------------------------------------
-    def emit(self, order: list[int]) -> str:
+    def emit(self, order: list[int], assign: dict[int, int] | None = None) -> str:
+        """assign: unit -> filament for support units printed with another filament than Orca
+        gave them (Scheduler.last_assign); their nozzle temperature is left at the loaded one's."""
+        assign = assign or {}
         p, head = self.p, self.head
         out: list[str] = list(p.prelude)
         st = MachineState()
@@ -158,8 +161,9 @@ class Emitter:
         layer_seen: set[int] = set()
         for n, si in enumerate(order):
             s: Segment = p.segments[si]
-            if s.tool != tool:
-                lines, retracted = self.block_lines(tool, s.tool, max(hm.max, s.z))
+            s_tool = assign.get(si, s.tool)
+            if s_tool != tool:
+                lines, retracted = self.block_lines(tool, s_tool, max(hm.max, s.z))
                 for ln in lines:
                     rep = self._spiral_lift(ln, st, hm) if is_move(ln) else None
                     if rep is not None:
@@ -167,12 +171,16 @@ class Emitter:
                         continue
                     st.feed(ln)
                     out.append(ln)
-                tool = s.tool
+                tool = s_tool
             out += ["; CHANGE_LAYER", f"; Z_HEIGHT: {s.z:g}", f"; LAYER_HEIGHT: {s.layer_height:g}"]
             if s.layer not in layer_seen:
                 layer_seen.add(s.layer)
                 out.extend(p.layers[s.layer].header)
-            out.extend(self._restore(st, s.lead_state))
+            want = s.lead_state
+            if s_tool != s.tool:
+                want = want.copy()
+                want.nozzle = None  # keep the loaded filament's temperature
+            out.extend(self._restore(st, want))
             out.extend(self._transition(st, s, hm))
             if abs(retracted - s.lead_d) > 1e-4:
                 out.append(f"G1 E{retracted - s.lead_d:.5f} F1800 ; colorbatch retract fix")

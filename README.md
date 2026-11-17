@@ -24,6 +24,8 @@ Stage A of plan C: an OrcaSlicer **slicing-pipeline plugin** that rewrites the e
 | Among equally good orders, prefer the one whose parts left standing rise least above the clearances | `schedule.py` (greedy tie-break) |
 | Test models (pillars, square-pillar layouts, Color Batching demo shape, figurine, keychain, split cube), headless slicing and evaluation | `tools/models.py`, `tools/slice.py`, `tools/evaluate.py` |
 | Squeeze a plate to the clearance limits for a physical test | `tools/limit_layout.py` |
+| Supports printed with whichever filament is loaded (`support_any_filament`, on by default, only when all filaments share one type): Orca's default support filament follows the current colour per layer and would otherwise force colours to interleave | `gcode.py` (`Segment.support`), `schedule.py` (`ANY`), `emit.py` |
+| Comparison tables: changes and time per plate and mode; supports on vs off | `tools/compare_table.py`, `tools/support_compare.py` |
 
 ## Use in OrcaSlicer (≥ 2.5.0)
 

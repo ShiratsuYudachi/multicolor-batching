@@ -24,6 +24,9 @@ class Options:
     # Calibration: [[x_min, x_max, tolerance], ...] in bed X (mm). Units whose footprint centre lies
     # in a zone use that tip_tolerance instead of the global one (geometry mode, island units only).
     tolerance_zones: list | None = None
+    # Print support-only parts with whichever filament is loaded (supports are removed anyway).
+    # Only applied when every filament has the same filament_type (e.g. all PLA).
+    support_any_filament: bool = True
 
     def head(self, printer_cfg: dict | None = None) -> HeadModel:
         """printer_cfg: the G-code's config block. In geometry mode its X-rod/lid clearances
@@ -89,7 +92,9 @@ def batch_gcode(text: str, opts: Options) -> tuple[str, dict]:
     gaps = [opts.island_gap, 0.0] if opts.mode == "geometry" and opts.island_gap > 0 else [0.0]
     if zones:  # zones are per island: whole-layer units would straddle them
         gaps = [opts.island_gap if opts.island_gap > 0 else 3.5]
-    best = None  # (flush, changes, label, parsed, emitter, order)
+    types = {t.strip() for t in str(cfg.get("filament_type", "")).split(";") if t.strip()}
+    support_any = opts.support_any_filament and len(types) <= 1
+    best = None  # (flush, changes, label, parsed, emitter, order, assign)
     candidates = {}
     base = None
     for gap in gaps:
@@ -103,17 +108,18 @@ def batch_gcode(text: str, opts: Options) -> tuple[str, dict]:
                 x = float(cell_centres(s.cells)[:, 0].mean())
                 t = next((t for lo, hi, t in zones if lo <= x <= hi), None)
                 unit_heads.append(zone_head[t] if t is not None else head)
-        sched = Scheduler(parsed.segments, head, em.flush, parsed.first_tool, unit_heads)
+        sched = Scheduler(parsed.segments, head, em.flush, parsed.first_tool, unit_heads, support_any)
         if base is None:
             base = sched.cost(list(range(len(parsed.segments))))
         for s in opts.strategies:
             order = sched.run(s)
-            changes, flush = sched.cost(order)
+            assign = dict(sched.last_assign)
+            changes, flush = sched.cost(order, assign)
             label = f"{s}/{'islands' if gap > 0 else 'layer-units'}"
             candidates[label] = changes
             if best is None or (flush, changes) < best[:2]:
-                best = (flush, changes, label, parsed, em, order)
-    flush, changes, label, parsed, em, order = best
+                best = (flush, changes, label, parsed, em, order, assign)
+    flush, changes, label, parsed, em, order, assign = best
     stats = dict(mode=opts.mode, head=head.name + (f" + {len(zones)} tolerance zones" if zones else ""),
                  segments=len(parsed.segments),
                  source_tool_changes=len(parsed.blocks), strategy=label, candidates=candidates)
@@ -122,5 +128,6 @@ def batch_gcode(text: str, opts: Options) -> tuple[str, dict]:
     if flush >= base[1] and not zones:
         return text, dict(stats, strategy="unchanged (no improvement over layer order)",
                           tool_changes=len(parsed.blocks), synth_blocks=0, travel_lifts=0)
-    out, timing = retime(text, em.emit(order))
-    return out, dict(stats, **em.stats, **timing)
+    out, timing = retime(text, em.emit(order, assign))
+    reassigned = sum(1 for u, t in assign.items() if t != parsed.segments[u].tool)
+    return out, dict(stats, **em.stats, **timing, support_units_recoloured=reassigned)

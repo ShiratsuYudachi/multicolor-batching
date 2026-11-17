@@ -244,9 +244,14 @@ def support_deps(segs: list[Segment], reach_layers: int = 1) -> list[list[int]]:
     return deps
 
 
+ANY = -1  # ready-set key of support units any loaded filament may print
+
+
 class Scheduler:
     def __init__(self, segs: list[Segment], head: HeadModel, flush: np.ndarray, first_tool: int,
-                 unit_heads: list[HeadModel] | None = None):
+                 unit_heads: list[HeadModel] | None = None, support_any: bool = False):
+        """support_any: support-only units (Segment.support) go to whichever filament is loaded
+        when they become printable; self.last_assign records the filament chosen per unit."""
         self.segs = segs
         self.g = Geometry(segs, head, unit_heads)
         # How many layers a colour can run ahead of a touching one: the head's allowance right at
@@ -262,6 +267,8 @@ class Scheduler:
             for d in ds:
                 self.dependents[d].append(u)
         self.lead_xy = np.array([s.lead_end[:2] for s in segs])
+        self.key = np.array([ANY if support_any and s.support else s.tool for s in segs], dtype=np.int64)
+        self.last_assign: dict[int, int] = {}
 
     # -- state ----------------------------------------------------------------------------
     def _init_state(self):
@@ -269,7 +276,7 @@ class Scheduler:
         remaining = np.array([len(d) for d in self.deps])
         ready: dict[int, set[int]] = {}
         for u in np.nonzero(remaining == 0)[0]:
-            ready.setdefault(int(self.g.tool[u]), set()).add(int(u))
+            ready.setdefault(int(self.key[u]), set()).add(int(u))
         return np.zeros(n, dtype=bool), remaining, ready
 
     @staticmethod
@@ -280,11 +287,11 @@ class Scheduler:
     def _mark(self, state, u: int) -> None:
         printed, remaining, ready = state
         printed[u] = True
-        ready[int(self.g.tool[u])].discard(u)
+        ready[int(self.key[u])].discard(u)
         for v in self.dependents[u]:
             remaining[v] -= 1
             if remaining[v] == 0:
-                ready.setdefault(int(self.g.tool[v]), set()).add(v)
+                ready.setdefault(int(self.key[v]), set()).add(v)
 
     def feasible(self, u: int, printed: np.ndarray) -> bool:
         """Clearance rules only (support is guaranteed by the ready sets)."""
@@ -297,7 +304,7 @@ class Scheduler:
         return g.clear(u, lower, zu - g.z[lower], nozzle_at_u=False)
 
     def _pick(self, state, tool: int, pos) -> int | None:
-        cands = state[2].get(tool)
+        cands = state[2].get(tool, set()) | state[2].get(ANY, set())
         if not cands:
             return None
         c = np.fromiter(cands, dtype=np.int64)
@@ -318,11 +325,12 @@ class Scheduler:
             seq.append(u)
             pos = self.lead_xy[u]
 
-    def cost(self, order: list[int]) -> tuple[int, float]:
+    def cost(self, order: list[int], assign: dict[int, int] | None = None) -> tuple[int, float]:
         """(tool changes, flush volume) of an order, starting from the first tool."""
+        assign = assign or {}
         changes, flush, tool = 0, 0.0, self.first_tool
         for u in order:
-            t = int(self.g.tool[u])
+            t = assign.get(u, int(self.g.tool[u]))
             if t != tool:
                 changes += 1
                 flush += float(self.flush[tool, t])
@@ -340,18 +348,20 @@ class Scheduler:
         order: list[int] = []
         tool = self.first_tool
         pos = (0.0, 0.0)
-        tools = sorted({int(t) for t in self.g.tool} | {tool})
+        tools = sorted({int(t) for t in self.key if t != ANY} | {tool})
+        self.last_assign = {}
         k = tools.index(tool)
         cycle = tools[k:] + tools[:k]
         rnd = 0
         while len(order) < n:
             got = self.batch(state, tool, pos)
             order.extend(got)
+            self.last_assign.update((u, tool) for u in got if self.key[u] == ANY)
             if got:
                 pos = self.lead_xy[got[-1]]
             if len(order) == n:
                 break
-            avail = [t for t, s in state[2].items() if s and t != tool]
+            avail = [t for t, s in state[2].items() if s and t != tool and t != ANY]
             if strategy == "snake":
                 # Next tool in the current sweep direction that has something ready.
                 seq = cycle if rnd % 2 == 0 else cycle[::-1]

@@ -24,13 +24,16 @@ def main(argv=None) -> int:
     ap.add_argument("--no-islands", action="store_true", help="one unit per layer and colour")
     ap.add_argument("--island-gap", type=float, default=3.5, help="geometry mode: island clustering distance (mm)")
     ap.add_argument("--tolerance-zones", help='calibration: JSON [[x_min, x_max, tolerance], ...] in bed X (mm)')
+    ap.add_argument("--keep-support-colours", action="store_true",
+                    help="print supports with the filament Orca assigned instead of whichever is loaded")
     ap.add_argument("--check", action="store_true", help="replay output and report head collisions")
     a = ap.parse_args(argv)
     text = open(a.input, encoding="utf-8").read()
     opts = Options(mode=a.mode, fixed_height=a.height,
                    head_profile=json.loads(a.profile) if a.profile else None, head_far=a.far,
                    tip_tolerance=a.tip_tolerance, island_gap=0.0 if a.no_islands else a.island_gap,
-                   tolerance_zones=json.loads(a.tolerance_zones) if a.tolerance_zones else None)
+                   tolerance_zones=json.loads(a.tolerance_zones) if a.tolerance_zones else None,
+                   support_any_filament=not a.keep_support_colours)
     t0 = time.time()
     out, stats = batch_gcode(text, opts)
     stats["seconds"] = round(time.time() - t0, 2)

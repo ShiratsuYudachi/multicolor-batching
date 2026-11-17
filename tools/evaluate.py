@@ -33,7 +33,9 @@ def main(names: list[str]) -> None:
             (src.parent / f"{mname}.gcode").write_text(out, encoding="utf-8", newline="\n")
             m = metrics(out)
             coll = check_collisions(out, opts.head(read_config(text.splitlines()))) + check_underprint(out)
-            same = m["model_mm3_by_tool"] == base["model_mm3_by_tool"]
+            # Per-filament volumes match exactly unless support was recoloured; the total always must.
+            same = (m["model_mm3_by_tool"] == base["model_mm3_by_tool"] if not stats.get("support_units_recoloured")
+                    else abs(m["model_mm3"] - base["model_mm3"]) < 1e-3 * max(base["model_mm3"], 1))
             note = ("" if same else "MODEL VOLUME MISMATCH ") + f"{stats['strategy']} {stats.get('candidates')} " \
                 + f"units={stats['segments']} " \
                 + (f"synth={stats['synth_blocks']} " if stats["synth_blocks"] else "") \
