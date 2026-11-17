@@ -519,6 +519,12 @@ def _build_units(idx0, layer, lines, st0, tool, label, prev, layer_start, island
                 if ft:
                     fx += [ft, f"; LINE_WIDTH: {wd:g}"]
                 body += fx + [f"G1 F{want.f:.10g}"]
+                # Chunk c starts with its travel; the previous chunk may end z-hopped (its wipe
+                # travel lifts), so lower to the height chunk c had after its travel, there.
+                z_want = states[a + 1].z
+                if abs(z_want - have.z) > 1e-6:
+                    body += [lines[a], f"G1 Z{z_want:.3f} F1200 ; colorbatch join z"] + lines[a + 1:b]
+                    continue
             body += lines[a:b]
         s0 = states[f]
         seg = Segment(idx0 + len(units), layer.idx, layer.z, layer.height, tool, lead, body,
