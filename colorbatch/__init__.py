@@ -18,7 +18,7 @@ class Options:
     fixed_height: float = 0.4      # mm, fixed mode
     head_profile: list | None = None  # [(radius, height)], geometry mode; None = A1 estimate
     head_far: float | None = None
-    tip_tolerance: float = 0.0     # geometry mode: empirical floor added to every band (mm)
+    tip_tolerance: float = 0.4     # geometry mode: empirical floor added to every band (mm)
     island_gap: float = 3.5        # mm; islands of one colour farther apart are scheduled separately (0 = off)
     strategies: tuple = ("snake", "greedy")
     # Calibration: [[x_min, x_max, tolerance], ...] in bed X (mm). Units whose footprint centre lies

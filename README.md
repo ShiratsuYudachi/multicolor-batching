@@ -4,6 +4,15 @@ Cross-layer colour batching for single-nozzle multi-material printers (Bambu A1 
 Instead of changing filament on every layer, one colour prints several layers in a row wherever the
 print head cannot hit already-printed parts, which cuts tool changes and flush waste.
 
+![Four pillars: Orca 300 filament changes, colour batching 25](docs/pillars.gif)
+
+![Ki-43 kit plate: Orca 84 filament changes, colour batching 2](docs/ki43.gif)
+
+Left: Orca's layer-by-layer order. Right: the same G-code after this plugin, on the same clock (the
+printer's own time estimate). Pillars: 300 → 25 changes, 8 h → 48 min. Ki-43 kit plate (painted 1/48
+aircraft parts, supports on, default settings): 84 → 2 changes, 3 h 56 → 1 h 22. Rendered with
+`tools/make_gif.py`.
+
 Stage A of plan C: an OrcaSlicer **slicing-pipeline plugin** that rewrites the exported G-code
 (`psGCodePostProcess`). No Orca rebuild is needed. Stage B (moving this into the Orca fork
 `Dev/OrcaSlicer-batching`, branch `feature/cross-layer-batching`) is still to do.
@@ -26,6 +35,7 @@ Stage A of plan C: an OrcaSlicer **slicing-pipeline plugin** that rewrites the e
 | Squeeze a plate to the clearance limits for a physical test | `tools/limit_layout.py` |
 | Supports printed with whichever filament is loaded (`support_any_filament`, on by default, only when all filaments share one type): Orca's default support filament follows the current colour per layer and would otherwise force colours to interleave | `gcode.py` (`Segment.support`), `schedule.py` (`ANY`), `emit.py` |
 | Comparison tables: changes and time per plate and mode; supports on vs off | `tools/compare_table.py`, `tools/support_compare.py` |
+| Before/after print-order GIF | `tools/make_gif.py` |
 
 ## Use in OrcaSlicer (≥ 2.5.0)
 
@@ -48,7 +58,7 @@ Plugin config (Plugins › Config, JSON):
 | `fixed_height` | `0.4` | fixed mode: allowed height difference to printed parts, mm |
 | `head_profile` | A1 hotend CAD | geometry mode: `[[radius, height], …]`; within `radius` of the nozzle axis, obstacles may stand `height` above the tip |
 | `head_far` | `25` | allowed height beyond the profile (X-rod clearance) |
-| `tip_tolerance` | `0` | geometry mode: height floor added to every band (empirical squish tolerance, e.g. 0.4) |
+| `tip_tolerance` | `0.4` | geometry mode: height floor added to every band (empirical squish tolerance; 0.4 printed cleanly on the A1 calibration plate, `0` = strict head model) |
 | `island_gap` | `3.5` | geometry mode: islands of one colour farther apart than this are scheduled separately |
 | `tolerance_zones` | `null` | calibration: `[[x_min, x_max, tolerance], …]` in bed X; islands centred in a zone use that `tip_tolerance`. `tools/models.py tol_test` builds the matching five-pair plate (0 / 0.2 / 0.4 / 0.6 / 0.8 mm, left to right) and `tol_zones()` its zones |
 

@@ -16,7 +16,7 @@ Config (Plugins > Config tab, or per-preset override):
    "fixed_height": 0.4,                     # fixed mode: allowed height difference (mm)
    "head_profile": [[0.5, 0.0], [1.0, 0.2], ...] | null,   # geometry mode: (radius, height) steps
    "head_far": 25.0 | null,                 # clearance beyond the profile (X-rod)
-   "tip_tolerance": 0.0,                    # geometry mode: height floor for every band (mm)
+   "tip_tolerance": 0.4,                    # geometry mode: height floor for every band (mm)
    "island_gap": 3.5,                       # mm; colour islands farther apart are scheduled separately (0 = off)
    "tolerance_zones": null,                 # calibration: [[x_min, x_max, tolerance], ...] in bed X (mm)
    "support_any_filament": true}            # print supports with whichever filament is loaded (same filament type only)
@@ -32,7 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from colorbatch import Options, batch_gcode  # noqa: E402
 
 DEFAULTS = {"mode": "geometry", "fixed_height": 0.4, "head_profile": None, "head_far": None,
-            "tip_tolerance": 0.0, "island_gap": 3.5, "tolerance_zones": None, "support_any_filament": True}
+            "tip_tolerance": 0.4, "island_gap": 3.5, "tolerance_zones": None, "support_any_filament": True}
 
 
 class ColorBatching(orca.slicing.SlicingPipelineCapabilityBase):

@@ -19,7 +19,7 @@ def main(argv=None) -> int:
     ap.add_argument("--height", type=float, default=0.4, help="fixed mode batch height (mm)")
     ap.add_argument("--profile", help='geometry mode head profile JSON, e.g. "[[0.5,0],[2,0.6],[14,3.5]]"')
     ap.add_argument("--far", type=float, help="clearance beyond the profile (mm)")
-    ap.add_argument("--tip-tolerance", type=float, default=0.0,
+    ap.add_argument("--tip-tolerance", type=float, default=0.4,
                     help="geometry mode: empirical height floor added to every band (mm)")
     ap.add_argument("--no-islands", action="store_true", help="one unit per layer and colour")
     ap.add_argument("--island-gap", type=float, default=3.5, help="geometry mode: island clustering distance (mm)")
