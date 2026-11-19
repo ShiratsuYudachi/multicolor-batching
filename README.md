@@ -6,12 +6,14 @@ print head cannot hit already-printed parts, which cuts tool changes and flush w
 
 ![Four pillars: Orca 300 filament changes, colour batching 25](docs/pillars.gif)
 
-![Ki-43 kit plate: Orca 84 filament changes, colour batching 2](docs/ki43.gif)
+![Real plate, side view: Orca 318 filament changes, colour batching 5](docs/plate.gif)
 
 Left: Orca's layer-by-layer order. Right: the same G-code after this plugin, on the same clock (the
-printer's own time estimate). Pillars: 300 → 25 changes, 8 h → 48 min. Ki-43 kit plate (painted 1/48
-aircraft parts, supports on, default settings): 84 → 2 changes, 3 h 56 → 1 h 22. Rendered with
-`tools/make_gif.py`.
+printer's own time estimate). Pillars (top, isometric): 300 → 25 changes, 8 h → 48 min. A real
+plate of mixed parts (bottom, side view, default settings): 318 → 5 changes; each colour climbs
+many layers before the next one runs. Rendered with `tools/make_gif.py` (`--view side` for the
+second one). Single painted figures (Mario, Ki-43) gain less and show it poorly: their colours
+touch, so a colour can only lead by the tip tolerance (2 layers at 0.4 mm).
 
 Stage A of plan C: an OrcaSlicer **slicing-pipeline plugin** that rewrites the exported G-code
 (`psGCodePostProcess`). No Orca rebuild is needed. Stage B (moving this into the Orca fork

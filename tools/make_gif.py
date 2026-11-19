@@ -69,13 +69,15 @@ def trace(text: str):
     return np.array(segs), np.array(tools), np.array(vol), np.array(chg)
 
 
-def project(xyz, zscale):
-    c, s = np.cos(np.radians(30)), np.sin(np.radians(30))
+def project(xyz, zscale, view="iso"):
     x, y, z = xyz[..., 0], xyz[..., 1], xyz[..., 2]
+    if view == "side":  # looking along +Y: every colour's lead over the others shows as height
+        return np.stack([x, z * zscale], axis=-1)
+    c, s = np.cos(np.radians(30)), np.sin(np.radians(30))
     return np.stack([(x - y) * c, (x + y) * s + z * zscale], axis=-1)
 
 
-def render(before: str, after: str, out: Path, title: str, frames: int, zscale: float):
+def render(before: str, after: str, out: Path, title: str, frames: int, zscale: float, view: str = "iso"):
     cfg = read_config(before.splitlines())
     colours = [c.strip()[:7] for c in str(cfg.get("filament_colour", "")).split(";")]
     used = sorted({int(t) for t in trace(before)[1] if t is not None})
@@ -83,7 +85,7 @@ def render(before: str, after: str, out: Path, title: str, frames: int, zscale: 
         palette = ["#e8a33d", "#3b6fd8", "#d64545", "#4caf50", "#8e5bd0", "#222222", "#7fd3e8", "#f2d13a"]
         colours = palette * 2
     data = [trace(before), trace(after)]
-    allp = np.concatenate([project(d[0], zscale).reshape(-1, 2) for d in data])
+    allp = np.concatenate([project(d[0], zscale, view).reshape(-1, 2) for d in data])
     lo, hi = allp.min(0), allp.max(0)
     pad = (hi - lo) * 0.04
     total = max(d[2][-1] for d in data)
@@ -97,7 +99,7 @@ def render(before: str, after: str, out: Path, title: str, frames: int, zscale: 
             n = int(np.searchsorted(vol, f * total, side="right"))
             if n:
                 cols = [colours[t] if t is not None and t < len(colours) else "#888888" for t in tools[:n]]
-                ax.add_collection(LineCollection(project(segs[:n], zscale), colors=cols, linewidths=0.6))
+                ax.add_collection(LineCollection(project(segs[:n], zscale, view), colors=cols, linewidths=1.6 if view == "side" else 0.6))
             ax.set_xlim(lo[0] - pad[0], hi[0] + pad[0])
             ax.set_ylim(lo[1] - pad[1], hi[1] + pad[1])
             ax.set_aspect("equal")
@@ -120,12 +122,13 @@ def main():
     ap.add_argument("out")
     ap.add_argument("--title", default="")
     ap.add_argument("--frames", type=int, default=90)
+    ap.add_argument("--view", choices=("iso", "side"), default="iso")
     ap.add_argument("--zscale", type=float, default=1.0, help="vertical exaggeration")
     a = ap.parse_args()
     before = Path(a.gcode).read_text(encoding="utf-8")
     after, stats = batch_gcode(before, Options())
     print(stats.get("source_tool_changes"), "->", stats.get("tool_changes"))
-    render(before, after, Path(a.out), a.title, a.frames, a.zscale)
+    render(before, after, Path(a.out), a.title, a.frames, a.zscale, a.view)
 
 
 if __name__ == "__main__":
